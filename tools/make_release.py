@@ -69,8 +69,8 @@ PGO_DIR = MAIN_ROOT / 'build' / 'pgo'   # pgo-<version>.profdata + .json (tools/
 MSYS2 = 'https://repo.msys2.org/mingw/ucrt64/'
 SDL_VERSION = '3.4.20'
 LLVM_VERSION = '20261020'
-MNG_COMMIT = 'b75be8cfa704df3701e86130c8ced268e79d6b11'
-MODRELAY_VERSION = '1.0.0'   # MacNativeGames, the shader list (refs/MacNativeGames)
+MNG_COMMIT = 'b75be8cfa704df3701e86130c8ced268e79d6b11'   # MacNativeGames, the shader list (refs/MacNativeGames)
+MODRELAY_VERSION = '1.0.0'   # ModRelay (github.com/MultiplayerMods/ModRelay), the recomp toolkit and the Hub
 # name: (url, sha256)
 PINS = {
     'python-embed': ('https://www.python.org/ftp/python/3.14.9/python-3.14.9-embed-amd64.zip',

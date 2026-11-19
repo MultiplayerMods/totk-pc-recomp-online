@@ -19,6 +19,9 @@ lift cache, gen/<mod>/lift_cache.json) and rewrites only those whose C changed, 
 those. A change of the mods' code cheats then costs a few seconds of lift and the chunks holding its sites, not a full
 lift or compile.
 
+With a ModRelay mod (--modrelay, docs/modrelay.md; Windows): modrelay/exefs/ (the ExeFS with the mod's patch applied,
+which totk.exe runs: build_game.py --exefs-folder) and the ModRelay Hub (Hub.dll, steam_api64.dll) next to totk.exe.
+
 Install folder build-cache/: cheats.status (tools/cheats.py), exefs.status and exefs.data (tools/exefs_patches.py) and
 rebuild.txt, the command that starts this setup in its rebuild mode on the install folder (installer/gui.py --rebuild),
 one argument per line; totk.exe runs it at start when an enabled mod has code cheats the build lacks
@@ -400,6 +403,15 @@ class Check(Step):
             # totk --prepare-shaders opens a window and needs a present-capable queue family; without a display it
             # fails after lift and compile (~15 min), so stop here
             raise InstallError('check.no_display')
+        patch = modrelay_patch(ctx)
+        if patch is not None:
+            if not (layout.modrelay and (layout.modrelay / 'modrelay_recomp' / '__init__.py').is_file()):
+                raise InstallError('check.modrelay_unsupported')
+            if not (patch / MODRELAY_PATCH).is_file():
+                raise InstallError('check.modrelay_patch_missing', path=str(patch))
+            ctx.state['modrelay'] = str(patch)
+        else:
+            ctx.state.pop('modrelay', None)
         ctx.lang = lang
         ctx.temp.mkdir(parents=True, exist_ok=True)
 
@@ -415,6 +427,8 @@ class Check(Step):
         if ctx.will_run('extract'):
             rep.progress('check', 'versions', force=True)
             self.versions(ctx)
+        if patch is not None:
+            modrelay_game(patch, game_version(ctx))
         return {}
 
     def host(self, ctx):
@@ -883,6 +897,47 @@ def cheats_status(ctx):
     return ctx.dest / 'build-cache' / 'cheats.status'
 
 
+MODRELAY_PATCH = 'modrelay-patch.json'
+TITLE_ID = '0100F2C0115B6000'   # Tears of the Kingdom
+MODRELAY_EXEFS = 'modrelay/exefs'   # in the install folder: the ExeFS with the mod's patch applied
+HUB_FILES = ('Hub.dll', 'steam_api64.dll')
+
+
+def modrelay_patch(ctx):
+    """The ModRelay mod's Recomp/<mod> folder this install is built with (docs/modrelay.md), or None: --modrelay, else
+    the one recorded by an earlier run (a rebuild for the mods or an update keeps the mod), unless --no-modrelay."""
+    options = getattr(ctx, 'options', None)
+    if getattr(options, 'no_modrelay', False):
+        return None
+    given = getattr(options, 'modrelay', None)
+    if given:
+        return Path(given).resolve()
+    recorded = (getattr(ctx, 'state', None) or {}).get('modrelay')
+    return Path(recorded) if recorded else None
+
+
+def modrelay_game(patch, version):
+    """Stop before the extraction when the ModRelay mod is made for another game or another update than the one this
+    install is built from (the game of modrelay-patch.json). The toolkit refuses such a patch too, by main's build id,
+    but only in the lift step, after the extraction."""
+    try:
+        game = json.loads((patch / MODRELAY_PATCH).read_text(encoding='utf-8')).get('game') or {}
+    except (OSError, ValueError, AttributeError):
+        raise InstallError('check.modrelay_patch_unreadable', path=str(patch)) from None
+    title = str(game.get('title_id') or TITLE_ID).upper()
+    if title != TITLE_ID:
+        raise InstallError('check.modrelay_other_game', path=str(patch), title=title)
+    wanted = game.get('version')
+    if wanted and wanted != version:
+        raise InstallError('check.modrelay_wrong_version', path=str(patch), mod=wanted, game=version)
+
+
+def modrelay_key(ctx):
+    """The parts of the lift key for the ModRelay mod: its patch folder and the toolkit that applies it."""
+    patch = modrelay_patch(ctx)
+    return () if patch is None else ('modrelay-1', ctx.layout.modrelay, ctx.layout.tools / 'modrelay.py', patch)
+
+
 class Lift(Step):
     id = 'lift'
     transient = True
@@ -893,7 +948,7 @@ class Lift(Step):
         files = cheat_files(ctx) + exefs_files(ctx)
         return fingerprint('lift-5', ctx.keys['extract'], ctx.layout.recomp, ctx.layout.patches(game_version(ctx)),
                            ctx.layout.tools / 'cheats.py', ctx.layout.tools / 'exefs_patches.py', *files,
-                           *(f.relative_to(ctx.dest / 'mods').as_posix() for f in files))
+                           *(f.relative_to(ctx.dest / 'mods').as_posix() for f in files), *modrelay_key(ctx))
 
     def current(self, ctx, record):
         gen = ctx.temp / 'gen'
@@ -942,14 +997,14 @@ class Lift(Step):
                 skipped[warn] = log
             else:
                 patches = ctx.temp / out
-        args = ['--exefs', ctx.dest / 'exefs', '--out', gen]
-        code, log = run_tool(ctx, 'lift', layout.recomp / 'gen.py', args + ['--patches', patches], parse)
+        lifter, args = self.modrelay(ctx, gen)
+        code, log = run_tool(ctx, 'lift', lifter, args + ['--patches', patches], parse)
         if code and patches != plain:
             for tool, out, outputs, inputs, warn in stages:
                 if inputs and warn not in skipped:
                     drop(outputs)
                     skipped[warn] = log
-            code, log = run_tool(ctx, 'lift', layout.recomp / 'gen.py', args + ['--patches', plain], parse)
+            code, log = run_tool(ctx, 'lift', lifter, args + ['--patches', plain], parse)
         if code:
             raise InstallError('lift.failed', code=code, log=str(log))
         # The mods' data writes must stay off the bytes the lifted code reads as constants (its jump tables), which only
@@ -965,6 +1020,26 @@ class Lift(Step):
             rep.warning(warn, log=str(log))
         (gen / STAMP).write_text(ctx.keys['lift'] + '\n')
         return {}
+
+    def modrelay(self, ctx, gen):
+        """The lift tool and its arguments. With a ModRelay mod, tools/modrelay.py first applies the mod's patch to a
+        copy of the ExeFS in the install folder (the extracted one stays as it is), then lifts that copy, the mod's
+        module included, and writes modrelay_recomp.h into gen/ for runtime/modrelay.c."""
+        layout, patch = ctx.layout, modrelay_patch(ctx)
+        header = gen / 'modrelay_recomp.h'
+        if patch is None:
+            remove(ctx.dest / MODRELAY_EXEFS.split('/')[0])
+            if header.is_file():   # the mod's module would stay among the generated modules: lift all again
+                remove(gen)
+            return layout.recomp / 'gen.py', ['--exefs', ctx.dest / 'exefs', '--out', gen]
+        code, log = run_tool(ctx, 'lift', layout.tools / 'modrelay.py',
+                             ['apply', '--toolkit', layout.modrelay, '--patch', patch, '--version',
+                              version_tag(game_version(ctx)), '--game', ctx.dest / 'exefs',
+                              '--out', ctx.dest / MODRELAY_EXEFS])
+        if code:
+            raise InstallError('lift.modrelay_failed', path=str(patch), code=code, log=str(log))
+        return layout.tools / 'modrelay.py', ['lift', '--toolkit', layout.modrelay, '--exefs',
+                                              ctx.dest / MODRELAY_EXEFS, '--header', header, '--out', gen]
 
 
 # ---- 5. compile
@@ -987,15 +1062,24 @@ class Compile(Step):
 
     def key(self, ctx):
         return fingerprint('compile-3', ctx.keys['lift'], runtime_key(ctx),
-                           ctx.layout.pgo(game_version(ctx)) or 'no profile')
+                           ctx.layout.pgo(game_version(ctx)) or 'no profile', *self.hub(ctx))
 
     def current(self, ctx, record):
         exe = ctx.dest / ('totk' + EXE)
         if not exe.is_file() or not (ctx.dest / 'romfs-index.bin').is_file():
             return False
-        if not all((ctx.dest / d.name).is_file() for d in ctx.layout.dlls):
+        if not all((ctx.dest / d.name).is_file() for d in ctx.layout.dlls + self.hub(ctx)):
             return False
         return file_sha256(exe) == record.get('exe_sha256')
+
+    @staticmethod
+    def hub(ctx):
+        """The ModRelay Hub's files to put next to totk.exe: with a ModRelay mod, runtime/modrelay.c opens the Hub at
+        start when Hub.dll is there. Without them the player opens the Hub with ModRelay's Launcher."""
+        folder = ctx.layout.modrelay_hub
+        if modrelay_patch(ctx) is None or not folder:
+            return ()
+        return tuple(folder / n for n in HUB_FILES if (folder / n).is_file())
 
     def run(self, ctx):
         layout, rep, dest = ctx.layout, ctx.reporter, ctx.dest
@@ -1014,13 +1098,17 @@ class Compile(Step):
         cpu = getattr(ctx, 'cpu', 'v3')
         lib = layout.runtime_lib_for(cpu)
         pgo = layout.pgo(game_version(ctx))
+        # With a ModRelay mod totk.exe runs the patched ExeFS (Lift.modrelay), checked against its own hashes
+        mod = modrelay_patch(ctx) is not None
+        exefs = dest / (MODRELAY_EXEFS if mod else 'exefs')
+        expected = exefs / 'expected.json' if mod else layout.expected(game_version(ctx))
         code, log = run_tool(ctx, 'compile', layout.tools / 'build_game.py', [
             '--gen', ctx.temp / 'gen', '--out', build, '--toolchain', layout.llvm, '--cpu', cpu,
             *(['--deps', layout.deps] if layout.deps else []), *(['--sysroot', layout.sysroot] if layout.sysroot else []),
             '--runtime', layout.runtime, *(['--runtime-lib', lib] if lib else ()), *(['--pgo', pgo] if pgo else ()),
             '--ninja', layout.ninja,
-            '--version', version_tag(game_version(ctx)), '--expected', layout.expected(game_version(ctx)),
-            '--exefs', dest / 'exefs', '--romfs', dest / 'romfs',
+            '--version', version_tag(game_version(ctx)), '--expected', expected,
+            '--exefs', exefs, '--exefs-folder', MODRELAY_EXEFS if mod else 'exefs', '--romfs', dest / 'romfs',
             '--profile', dest / 'profile'], parse)
         exe = build / ('totk' + EXE)
         if code and link_output_locked(log):
@@ -1034,6 +1122,15 @@ class Compile(Step):
         replace_file(build / 'romfs-index.bin', dest / 'romfs-index.bin')
         for dll in layout.dlls:
             replace_file(dll, dest / dll.name)
+        hub = self.hub(ctx)
+        for name in HUB_FILES:
+            if not any(f.name == name for f in hub):
+                remove(dest / name)
+        for f in hub:
+            try:
+                shutil.copyfile(f, dest / f.name)
+            except PermissionError:
+                raise InstallError('compile.exe_in_use', path=str(dest / f.name)) from None
         return {'exe_sha256': file_sha256(dest / exe.name), 'cpu': cpu}
 
 

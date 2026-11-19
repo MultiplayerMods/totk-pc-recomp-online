@@ -18,6 +18,7 @@
 #include "cheats.h"
 #include "fs.h"
 #include "gfx.h"
+#include "modrelay.h"
 #include "mods.h"
 #include "nvn_api.h"
 #include "platform/platform.h"
@@ -48,7 +49,10 @@ static const RtLoaded *module_named(const char *name) {
     rt_fatal("boot: module %s is not loaded", name);
 }
 
-static uint32_t ctor_state(const RtLoaded *m) { return LD32(m->ctor_flag); }
+static uint32_t ctor_state(const RtLoaded *m) {
+    uint32_t state;
+    return rt_modrelay_ctor_state(m, &state) ? state : LD32(m->ctor_flag);
+}
 
 static const char *caller(const Cpu *c, char *buf, int n) { return ldr_describe(c->x[30] - 4, buf, n); }
 
@@ -90,6 +94,7 @@ static void cb_module_inits(Cpu *c) {
             rt_fatal("boot: %s has %llu init_array entries, this game version has %llu", m->name, (unsigned long long)entries,
                      (unsigned long long)expected_inits[k].entries);
     }
+    rt_modrelay_init(c);
     plat_xchg32(&inits_done, 1);
 }
 

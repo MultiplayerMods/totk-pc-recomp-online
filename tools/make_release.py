@@ -15,6 +15,9 @@ cached in toolchain/release-dl/ and checked against the sha256 in PINS; a mismat
                libraries of SDL3, Opus, libvpx, Vulkan and VMA)
     bin/       totk_xlate.exe (+ .id), hactool.exe, SDL3.dll (upstream), libopus-0.dll, ninja.exe
     recomp/, tools/, data/, installer/, licenses/, THIRD_PARTY_NOTICES.md, totk.ini.example
+    modrelay/  ModRelay (github.com/MultiplayerMods/ModRelay, MIT), for a ModRelay mod (docs/modrelay.md): recomp/,
+               its recomp toolkit (backends/recomp of the pinned tag), and hub/, the Hub of its pinned Windows release
+               (Hub.dll, steam_api64.dll, their licences). No mod: the player picks their own mod's patch
     data/pgo-<v>.profdata  build/pgo's execution profile of an update (tools/pgo.py) and its .json record: the
                install compiles that update's code and the runtime libraries with it
     VERSION    the repository's VERSION plus the commit, 0.1.0+973c626; the installer's release string
@@ -66,7 +69,8 @@ PGO_DIR = MAIN_ROOT / 'build' / 'pgo'   # pgo-<version>.profdata + .json (tools/
 MSYS2 = 'https://repo.msys2.org/mingw/ucrt64/'
 SDL_VERSION = '3.4.20'
 LLVM_VERSION = '20261020'
-MNG_COMMIT = 'b75be8cfa704df3701e86130c8ced268e79d6b11'   # MacNativeGames, the shader list (refs/MacNativeGames)
+MNG_COMMIT = 'b75be8cfa704df3701e86130c8ced268e79d6b11'
+MODRELAY_VERSION = '1.0.0'   # MacNativeGames, the shader list (refs/MacNativeGames)
 # name: (url, sha256)
 PINS = {
     'python-embed': ('https://www.python.org/ftp/python/3.14.9/python-3.14.9-embed-amd64.zip',
@@ -96,6 +100,12 @@ PINS = {
             '44c81162337915afecda3185f66fd98268a54454580b2717080c9dfef57fe781'),
     'zstd': (MSYS2 + 'mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst',   # static libzstd.a (runtime/resolution.c)
              'dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89'),
+    # ModRelay: the recomp toolkit from the tag's sources, the Hub from its Windows release
+    'modrelay-src': (f'https://github.com/MultiplayerMods/ModRelay/archive/refs/tags/v{MODRELAY_VERSION}.tar.gz',
+                     '79b3367b8a515eeffaf25b17a1a372629cf7a1f09a0134e04cffca25bac2b857'),
+    'modrelay-win': (f'https://github.com/MultiplayerMods/ModRelay/releases/download/v{MODRELAY_VERSION}/'
+                     f'ModRelay-{MODRELAY_VERSION}-Windows-x64.zip',
+                     '09200f47e6b01b435d33a1a4b5cf04fda3afe224cae7fe524ebe4d7d5c3e38e8'),
 }
 # The component MSI inside the python.org installer that carries Tcl/Tk and tkinter (Burn names its payloads a0..a27).
 TCLTK_PAYLOAD = ('a12', 'ac87609db3f715404dd41a989c2f1706ea1512f3d86217f938d11c63af8eb505')
@@ -115,7 +125,7 @@ LLVM_SKIP_SUFFIXES = {'.idl', '.tlb'}
 TOOLS_FILES = ['build_game.py', 'build_shaders.py', 'button_icons.py', 'check_content.py', 'check_isa.py', 'extract.py',
                'hostmem.py', 'make_romfs_patches.py', 'ncz.py', 'pack_shader_cache.py', 'prepare_shaders.py',
                'romfs_index.py', 'shader_census.py', 'shader_list.py', 'ultrawide_layout.py', 'cheats.py',
-               'exefs_patches.py']
+               'exefs_patches.py', 'modrelay.py']
 TOOLS_DIRS = ['vendor/macnativegames', 'data']   # data/: expected hashes
 RUNTIME_SUFFIXES = {'.h', '.inc', '.ico'}   # .ico: the installer window icon
 
@@ -139,6 +149,8 @@ def fetch(name):
         path = DL / f'{name}-9.0.4.tar.gz'   # upstream archives have identical basenames
     if name == 'libvpx-src':
         path = DL / 'libvpx-1.17.0.tar.gz'
+    if name == 'modrelay-src':
+        path = DL / f'ModRelay-{MODRELAY_VERSION}.tar.gz'   # the archive is named after the tag only
     if path.is_file():
         if sha256_file(path) == want:
             return path
@@ -374,6 +386,23 @@ def collect_licenses(out):
             (lic / name).write_bytes(t.extractfile(member).read())
     for name in ('LICENSE.TXT',):
         shutil.copy2(out / 'llvm' / name, lic / 'llvm-mingw-LICENSE.txt')
+
+
+def build_modrelay(out):
+    """modrelay/recomp (the toolkit, without its tests) and modrelay/hub (Hub.dll, steam_api64.dll and the licences
+    the Hub ships with), which installer/layout.py maps."""
+    src = unpack('modrelay-src') / f'ModRelay-{MODRELAY_VERSION}'
+    kit = src / 'backends' / 'recomp'
+    dst = out / 'modrelay'
+    copy_tree(kit / 'modrelay_recomp', dst / 'recomp' / 'modrelay_recomp', lambda r: '__pycache__' in r)
+    for name in ('modrelay-recomp.py', 'README.md'):
+        shutil.copy2(kit / name, dst / 'recomp' / name)
+    win = unpack('modrelay-win')
+    for name in ('Hub.dll', 'steam_api64.dll', 'LICENSE'):
+        (dst / 'hub').mkdir(parents=True, exist_ok=True)
+        shutil.copy2(win / name, dst / 'hub' / name)
+    copy_tree(win / 'licenses', dst / 'hub' / 'licenses')
+    shutil.copy2(src / 'LICENSE', out / 'licenses' / 'ModRelay-LICENSE.txt')
 
 
 # ---- runtime/, recomp/, tools/, data/ ---------------------------------------------------------------------------------
@@ -620,6 +649,7 @@ def main():
     build_sources(out, pgo)
     build_launcher(out, llvm)
     collect_licenses(out)
+    build_modrelay(out)
     check_folder(out)
     check_bundle(out)
     sizes(out)

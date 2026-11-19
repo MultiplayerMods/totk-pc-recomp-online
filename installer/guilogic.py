@@ -138,6 +138,7 @@ class Form:
     lang: str = ''
     dest: str = ''
     dlss: bool = False
+    modrelay: str = ''   # a ModRelay mod's Recomp folder (docs/modrelay.md); empty: none
 
     def installed_state(self):
         """The recorded state of the install folder (totk-install.json), or None. Never raises."""
@@ -174,6 +175,8 @@ class Form:
                     found.append(f'ui.missing_{name}')
         if self.firmware.strip() and not Path(self.firmware.strip()).is_dir():
             found.append('ui.missing_firmware')
+        if self.modrelay.strip() and not (Path(self.modrelay.strip()) / 'modrelay-patch.json').is_file():
+            found.append('ui.missing_modrelay')
         return found
 
     def command(self, python, root=None, temp=None, verify_hashes=False):
@@ -182,6 +185,10 @@ class Form:
                             ('--firmware', self.firmware), ('--lang', self.lang), ('--dest', self.dest)):
             if value.strip():
                 cmd += [flag, value.strip()]
+        if self.modrelay.strip():
+            cmd += ['--modrelay', self.modrelay.strip()]
+        elif (self.installed_state() or {}).get('modrelay'):   # the player cleared the field of a mod install
+            cmd.append('--no-modrelay')
         if root:
             cmd += ['--root', str(root)]
         if temp:

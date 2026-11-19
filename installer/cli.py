@@ -1,5 +1,5 @@
 """Command line: python -m installer --base FILE --update FILE --keys FILE --lang CODE --dest DIR [--firmware DIR]
-                                     [--root DIR] [--temp DIR] [--verify] [--dlss]
+                                     [--root DIR] [--temp DIR] [--verify] [--dlss] [--modrelay DIR | --no-modrelay]
 
 A first install needs every option. --firmware names the Switch firmware folder (an unpacked firmware or an emulator's
 Contents/registered); the setup extracts the system shared fonts from it when the language is Chinese, Korean or
@@ -10,6 +10,9 @@ line, 3 cancelled (Ctrl+C or Ctrl+Break).
 
 --dlss downloads NVIDIA's DLSS library (nvngx_dlss.dll) from NVIDIA's DLSS SDK repository into the install folder on
 Windows with an NVIDIA RTX GPU (steps.py, Dlss).
+
+--modrelay builds a ModRelay mod into the game (docs/modrelay.md; Windows): DIR is the mod's Recomp/<mod> folder, the
+player's own download like the game files. Later runs on the folder keep it; --no-modrelay builds the game without it.
 """
 import argparse
 import hashlib
@@ -63,6 +66,10 @@ def main(argv=None):
     ap.add_argument('--verify', action='store_true', help='hash every kept file, also those this release made')
     ap.add_argument('--dlss', action='store_true', help="download NVIDIA's nvngx_dlss.dll (NVIDIA RTX SDK license) next "
                                                       'to the game, for dlaa and the DLSS modes')
+    mod = ap.add_mutually_exclusive_group()
+    mod.add_argument('--modrelay', type=Path, help="a ModRelay mod's Recomp/<mod> folder (modrelay-patch.json), built "
+                                                   'into the game')
+    mod.add_argument('--no-modrelay', action='store_true', help='build without the ModRelay mod of an earlier run')
     args = ap.parse_args(argv)
 
     # The window cancels with Ctrl+Break to the installer's process group (CREATE_NEW_PROCESS_GROUP), which also reaches

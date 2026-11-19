@@ -17,6 +17,9 @@ Release (docs/installer.md "Release layout"), root = the unpacked folder:
     totk.ini.example
     VERSION                 the release version, one line
     temp/                   the default temp folder (created)
+    modrelay/recomp/        the ModRelay recomp toolkit (ModRelay's backends/recomp), for a ModRelay mod
+                            (docs/modrelay.md); modrelay/hub/ holds the ModRelay Hub (Hub.dll, steam_api64.dll) and
+                            its licences, copied next to totk.exe with such a mod. Windows only
 
 Linux release (the AppImage's folder, docs/installer.md "Linux release"): python/bin/python3 (python-build-standalone,
 with tkinter), llvm/ with clang, lld and llvm-ar plus llvm/sysroot (the glibc headers and libraries the game links
@@ -26,13 +29,15 @@ Dev mode, root = a repository checkout (no python/python.exe): build/py314-embed
 Python the release ships, with the same packages), else this Python; toolchain/llvm-mingw-*/ and toolchain/deps-mingw;
 runtime/ as the sources with build/install-rtlib/libtotkrt.a and libtotkrt-v2.a (tools/build_game.py --make-runtime-lib
 --out build/install-rtlib, once per --cpu); MSYS2 UCRT64 ninja.exe; toolchain/hactool; build/xlate/totk_xlate.exe; the shader list from
-refs/MacNativeGames; build/pgo/pgo-<v>.profdata when there is one; build/install-temp. The version is VERSION with -dev and the commit: 0.1.0-dev+973c626. On Linux,
+refs/MacNativeGames; build/pgo/pgo-<v>.profdata when there is one; build/install-temp; the ModRelay toolkit and Hub
+of the [modrelay] table of config.local.toml (`sdk`, the ModRelay checkout, and `hub`). The version is VERSION with -dev and the commit: 0.1.0-dev+973c626. On Linux,
 dev mode takes clang, lld and ninja from PATH and the system's libraries (no deps folder, no SDL3 copy).
 """
 import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,6 +74,8 @@ class Layout:
     sysroot: Path | None = None       # Linux release: what the game links against, instead of the host's
     runtime_lib_v2: Path | None = None   # libtotkrt-v2.a: the runtime for CPUs without AVX2 (build_game.py --cpu v2)
     pgo_dir: Path | None = None       # pgo-<v>.profdata (tools/pgo.py); None: no profiles (Linux)
+    modrelay: Path | None = None      # the ModRelay recomp toolkit; None: no ModRelay mods (Linux)
+    modrelay_hub: Path | None = None  # Hub.dll and steam_api64.dll, copied next to totk.exe with a ModRelay mod
 
     @property
     def clang(self):
@@ -139,6 +146,8 @@ def release_layout(root):
         dlls=(root / 'bin' / 'SDL3.dll', root / 'bin' / 'libopus-0.dll') if WIN else (root / 'bin' / 'libSDL3.so.0',),
         shader_list=root / 'data' / 'shader_list.tsv', ini_example=root / 'totk.ini.example',
         pgo_dir=root / 'data' if WIN else None,
+        modrelay=root / 'modrelay' / 'recomp' if WIN else None,
+        modrelay_hub=root / 'modrelay' / 'hub' if WIN else None,
         # Linux: None, the install folder's .setup-temp (installer/cli.py): the AppImage is mounted read-only, and on
         # a Steam Deck /home is often too full for the generated C while the install folder is on the SD card
         temp=root / 'temp' if WIN else None,
@@ -165,7 +174,17 @@ def dev_layout(root):
         xlate=root / 'build' / 'xlate' / ('totk_xlate' + EXE),
         dlls=tuple(sorted((deps / 'bin').glob('*.dll'))),
         shader_list=None, ini_example=root / 'totk.ini.example', temp=root / 'build' / 'install-temp',
-        pgo_dir=root / 'build' / 'pgo')
+        pgo_dir=root / 'build' / 'pgo', **dev_modrelay(root))
+
+
+def dev_modrelay(root):
+    """The ModRelay toolkit and Hub of config.local.toml's [modrelay] table (docs/modrelay.md), when it names them."""
+    try:
+        table = tomllib.loads((root / 'config.local.toml').read_text(encoding='utf-8')).get('modrelay', {})
+    except (OSError, ValueError):
+        table = {}
+    sdk, hub = table.get('sdk'), table.get('hub')
+    return {'modrelay': Path(sdk) / 'backends' / 'recomp' if sdk else None, 'modrelay_hub': Path(hub) if hub else None}
 
 
 def dev_commit(root):

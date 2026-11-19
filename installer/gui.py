@@ -80,12 +80,12 @@ class App:
         self.run_args = run_args or {}   # extra CLI options for tests: temp, verify
         self.log_entries = []            # events and raw lines of the run, rendered by render_log
         self.bound = []                  # (widget, option, id, params) retranslated on a language switch
-        self.vars = {n: tk.StringVar() for n in ('base', 'update', 'keys', 'firmware', 'dest')}
+        self.vars = {n: tk.StringVar() for n in ('base', 'update', 'keys', 'firmware', 'dest', 'modrelay')}
         self.vars['lang'] = tk.StringVar()
         self.recorded = {}       # base/update paths prefilled from the recorded ones, by field
         self.touched = set()     # fields the user picked or typed
         self.programmatic = False
-        for name in ('base', 'update'):
+        for name in ('base', 'update', 'modrelay'):
             self.vars[name].trace_add('write', lambda *_, n=name: self.touched.add(n) if not self.programmatic else None)
         self.lang_code = default_game_language(ui_lang)
         self.screen = None
@@ -256,6 +256,11 @@ class App:
         ttk.Entry(grid, textvariable=self.vars['firmware']).grid(row=i, column=1, sticky='ew', pady=gap)
         self.button(grid, 'ui.browse', self.pick_firmware).grid(row=i, column=2, padx=(dpi.px(8), 0))
         i += 1
+        if self.layout.modrelay:   # ModRelay mods: the Windows release only (installer/layout.py)
+            self.label(grid, 'ui.modrelay').grid(row=i, column=0, sticky='w', pady=gap)
+            ttk.Entry(grid, textvariable=self.vars['modrelay']).grid(row=i, column=1, sticky='ew', pady=gap)
+            self.button(grid, 'ui.browse', self.pick_modrelay).grid(row=i, column=2, padx=(dpi.px(8), 0))
+            i += 1
         self.label(grid, 'ui.game_language').grid(row=i, column=0, sticky='w', pady=gap)
         self.lang_box = ttk.Combobox(grid, textvariable=self.vars['lang'], state='readonly', width=30)
         self.lang_box.grid(row=i, column=1, sticky='w', pady=gap)
@@ -267,6 +272,8 @@ class App:
         self.button(grid, 'ui.browse', self.pick_dest).grid(row=i + 1, column=2, padx=(dpi.px(8), 0))
         self.label(f, 'ui.compressed_help', wraplength=WRAP, justify='left').pack(anchor='w', pady=(dpi.px(8), 0))
         self.label(f, 'ui.firmware_help', wraplength=WRAP, justify='left').pack(anchor='w', pady=(dpi.px(8), 0))
+        if self.layout.modrelay:
+            self.label(f, 'ui.modrelay_help', wraplength=WRAP, justify='left').pack(anchor='w', pady=(dpi.px(8), 0))
         # On by default and named with its source and licence: the player sees what is downloaded and can untick it
         self.dlss_var = tk.BooleanVar(value=True)
         dlss = ttk.Checkbutton(f, variable=self.dlss_var)
@@ -344,7 +351,7 @@ class App:
     def form(self):
         return Form(base=self.vars['base'].get(), update=self.vars['update'].get(), keys=self.vars['keys'].get(),
                     firmware=self.vars['firmware'].get(), lang=self.selected_lang(), dest=self.vars['dest'].get(),
-                    dlss=self.dlss_var.get())
+                    dlss=self.dlss_var.get(), modrelay=self.vars['modrelay'].get())
 
     def set_prefill(self, name, value):
         self.programmatic = True
@@ -375,6 +382,10 @@ class App:
         form = self.form()
         state = form.installed_state()
         self.match_prefill(state)
+        if 'modrelay' not in self.touched:   # the ModRelay mod the chosen install was built with (a rebuild keeps it)
+            recorded = (state or {}).get('modrelay') or ''
+            if self.vars['modrelay'].get() != recorded:
+                self.set_prefill('modrelay', recorded)
         if state is not None:
             self.update_hint.configure(text=self.cat('ui.update_mode'))
             recorded = ini.canonical_language(state.get('lang'))
@@ -397,6 +408,11 @@ class App:
         path = filedialog.askdirectory(title=self.cat('ui.pick_firmware'), mustexist=True)
         if path:
             self.vars['firmware'].set(os.path.normpath(path))
+
+    def pick_modrelay(self):
+        path = filedialog.askdirectory(title=self.cat('ui.pick_modrelay'), mustexist=True)
+        if path:
+            self.vars['modrelay'].set(os.path.normpath(path))
 
     def pick_dest(self):
         path = filedialog.askdirectory(title=self.cat('ui.pick_dest'), mustexist=False)

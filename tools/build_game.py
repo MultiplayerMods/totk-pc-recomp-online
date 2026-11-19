@@ -188,8 +188,10 @@ DEFAULT_DEPS = ROOT / 'toolchain' / 'deps-mingw'
 # Runtime sources compiled per install, not in the library: romfs.c includes romfs_config.h, patches.c and ov_zstd.c
 # the patches.h of the player's game version (its patch page is the page after that version's main; ov_zstd.c's host
 # functions sit on it). mouse_direct.c and ov_ability.c also register host callbacks relative to that version's patch
-# page. A library source that includes one of PER_VERSION_HEADERS stops the library build (library_sources).
-INSTALL_SIDE = {'romfs.c', 'patches.c', 'ov_zstd.c', 'mouse_direct.c', 'ov_ability.c'}
+# page. modrelay.c includes the generated folder's modrelay_recomp.h when the install has a ModRelay mod
+# (docs/modrelay.md). A library source that includes one of PER_VERSION_HEADERS stops the library build
+# (library_sources).
+INSTALL_SIDE = {'romfs.c', 'patches.c', 'ov_zstd.c', 'mouse_direct.c', 'ov_ability.c', 'modrelay.c'}
 PER_VERSION_HEADERS = ('"patches.h"', '"romfs_config.h"')
 LIB_NAME = 'libtotkrt.a'
 AR = UCRT / 'llvm-ar.exe' if WIN else on_path('llvm-ar')
@@ -366,9 +368,10 @@ def runtime_object(out, src):
     return out / 'obj' / 'runtime' / rel.with_suffix('.o')
 
 
-def module_glue(layout, linked, hashes, paths, version):
+def module_glue(layout, linked, hashes, paths, version, exefs_folder='exefs'):
     """C for build/<version>/modules.c: the layout table, the linked modules' function tables (dispatch.h), the
-    expected ExeFS hashes, the game version and the default game paths (host.h)."""
+    expected ExeFS hashes, the game version, the default game paths and the ExeFS folder a copied folder holds next to
+    totk.exe (host.h)."""
     out = [f'// Module glue written by tools/build_game.py; do not edit. {GENERATED_MARKER}',
            '#include "dispatch.h"', '#include "host.h"', '#include "layout.h"', '']
     for name, base, size in layout:
@@ -392,6 +395,7 @@ def module_glue(layout, linked, hashes, paths, version):
     out += ['};', f'const int rt_exefs_sha256_count = {len(hashes)};', '']
     for name in ('exefs', 'romfs', 'profile'):
         out.append(f'const char rt_default_{name}[] = {c_string(paths[name].as_posix())};')
+    out.append(f'const char rt_exefs_folder[] = {c_string(exefs_folder)};')
     number = int(DISPLAY_VERSIONS[version].replace('.', '')) if version in DISPLAY_VERSIONS else 0   # 1.4.3 -> 143
     out += [f'const int rt_game_version = {number};', f'const char rt_port_version[] = {c_string(port_version())};', '']
     return '\n'.join(out)
@@ -823,6 +827,9 @@ def main():
                          "dir being the [work] dir of config.local.toml, else build)")
     ap.add_argument('--romfs', type=Path, help="totk.exe's default RomFS directory with romfs.bin and index.json "
                                                '(default <work dir>/extracted/<version>/romfs)')
+    ap.add_argument('--exefs-folder', default='exefs',
+                    help='the ExeFS folder totk.exe looks for next to itself before its default ExeFS directory, '
+                         'relative to its folder (the setup with a ModRelay mod: modrelay/exefs, the patched ExeFS)')
     ap.add_argument('--no-romfs', action='store_true',
                     help='build even when the RomFS directory has no index.json (the exe then stops at start)')
     ap.add_argument('--profile', type=Path, help="totk.exe's default profile directory (default build/profile for v121, "
@@ -926,7 +933,8 @@ def main():
     missing = [n for n in names if n not in hashes]
     if missing:
         sys.exit(f'{expected}: no exefs_sha256 for {missing}')
-    write_if_changed(out / 'modules.c', module_glue(layout, linked, hashes, paths, args.version))
+    write_if_changed(out / 'modules.c', module_glue(layout, linked, hashes, paths, args.version,
+                                                        args.exefs_folder))
     if has_romfs:
         count, size, dt = romfs_index.write(paths['romfs'], out)
         print(f'romfs index: {count} files, {mib(size)}, {dt:.1f} s')

@@ -14,6 +14,8 @@ holds only the game; the installer and its tools stay outside it.
    - their `prod.keys`;
    - optionally the firmware folder (`system/Contents/registered` of an unpacked firmware or an emulator's install),
      needed for Chinese, Korean and Traditional Chinese text;
+   - optionally a ModRelay mod for online play (Windows): the mod's `Recomp\<mod>` folder, downloaded with the mod
+     like the game files ([modrelay.md](modrelay.md));
    - the game language and the install folder.
 3. Waits for the setup, one time. The window shows each step and its progress.
 4. Plays `totk.exe` from the install folder. The installer and the source NSP or XCI (or NSZ, XCZ) can be deleted.
@@ -32,6 +34,8 @@ The install folder (`main.c` `portable_paths()` reads this layout; it stays port
   logs/                          totk.log of the last run, totk.1.log to totk.4.log of the runs before it
   shader and pipeline caches     prepared by the setup; shader-cache/shader-cache.pack holds the translations
   totk-install.json              what built this folder: release version, input hashes, finished steps
+  modrelay/exefs/                with a ModRelay mod: the ExeFS with the mod's patch applied, which totk.exe runs
+  Hub.dll, steam_api64.dll       with a ModRelay mod: the ModRelay Hub, opened by totk.exe at start
 ```
 
 ## Updating the port
@@ -133,7 +137,15 @@ this change hold a command into that mount: running the new setup once on the in
 
 ```
 python -m installer --base FILE --update FILE --keys FILE --lang CODE --dest DIR [--firmware DIR] [--root DIR] [--temp DIR] [--verify]
+                    [--modrelay DIR | --no-modrelay]
 ```
+
+- `--modrelay DIR` builds a ModRelay mod into the game (Windows): DIR is the mod's `Recomp\<mod>` folder, with
+  `modrelay-patch.json`. The lift step applies the mod's patch to a copy of the ExeFS (`tools/modrelay.py`, with the
+  release's `modrelay/recomp`), `modrelay/exefs` in the install folder, and lifts that copy; the compile step bakes that
+  folder in (`build_game.py --exefs-folder`) and puts the Hub of `modrelay/hub` next to `totk.exe`
+  ([modrelay.md](modrelay.md)). `totk-install.json` records the folder, so later runs (a rebuild for the mods, an update)
+  keep the mod; `--no-modrelay` builds the game without it again. The window fills the field from that record.
 
 - On a folder with `totk-install.json` only `--dest` is needed; the game files only when the extraction must run again.
 - `--firmware DIR` is the folder holding the firmware NCAs: an unpacked firmware, or the emulators' installed
@@ -180,6 +192,8 @@ runtime/              libtotkrt.a, libtotkrt-v2.a and the headers the generated 
 bin/                  totk_xlate.exe, hactool.exe, SDL3.dll, libopus-0.dll, ninja.exe
 data/                 shader_list.tsv (MacNativeGames, MIT); pgo-<ver>.profdata + .json, the execution profile an
                       update's code and the runtime libraries compile with (pgo.md)
+modrelay/             ModRelay (MIT), pinned: recomp/, its recomp toolkit; hub/, the Hub of its Windows release with
+                      its licences. No mod: each player supplies their own mod's patch
 THIRD_PARTY_NOTICES.md
 totk.ini.example, VERSION  the default ini; the release string (the repository's VERSION plus the commit)
 ```

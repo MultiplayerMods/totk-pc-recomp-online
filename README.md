@@ -1,4 +1,9 @@
-# TotK Recomp
+# TotK Recomp Online
+
+**TotK Recomp Online** is a fork of TotK Recomp that builds [ModRelay](https://github.com/MultiplayerMods/ModRelay) mods into the game, so the PC
+port can play online through the ModRelay Hub like the Switch game with the same mod. The mod ships a patch, the fork
+applies it before recompiling, and the game is built with the mod beside the ordinary build ([docs/modrelay.md](docs/modrelay.md)).
+Everything else is the original port, described below.
 
 **TotK Recomp** is a static recompilation of *The Legend of Zelda: Tears of the Kingdom* (Nintendo Switch, 2023) into a native x86-64 application for Windows and Linux ([docs/architecture.md](docs/architecture.md)).
 
@@ -65,6 +70,18 @@ Requirements: as on Windows, plus Linux 6.7 or later and glibc 2.34 or later (Ub
 3. Pick your game files, the language and an install folder, and press *Start*.
 4. Play `totk` from the install folder.
 
+### Online play (ModRelay mods)
+
+Windows only. Online play goes through a [ModRelay](https://github.com/MultiplayerMods/ModRelay) mod, which this
+repository and its releases never include: download the mod yourself, as you dump your game yourself.
+
+1. Get the mod's recompilation patch: its `Recomp\<mod>` folder, with `modrelay-patch.json`.
+2. In the setup, pick that folder in *ModRelay mod (optional)*. The setup builds the mod into the game and puts the
+   ModRelay Hub next to `totk.exe`; the Hub opens with the game.
+3. To remove the mod, run the setup again on the same folder with the field empty.
+
+Building from source instead: [docs/modrelay.md](docs/modrelay.md).
+
 To update, run a newer setup on the same folder; saves and settings are kept. Settings are in the in-game menu and in `totk.ini` ([totk.ini.example](totk.ini.example) lists every key). Controls: [docs/controls.md](docs/controls.md).
 
 ## Credits
@@ -79,6 +96,7 @@ TotK Recomp builds on the projects below. What was taken from each, with its lic
 - [deko3d](https://github.com/devkitPro/deko3d)
 - [hactool](https://github.com/SciresM/hactool)
 - [SDL 3](https://libsdl.org), [Dear ImGui](https://github.com/ocornut/imgui), [AMD FSR 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR), [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator), [libopus](https://opus-codec.org), [libvpx](https://chromium.googlesource.com/webm/libvpx), [Zstandard](https://github.com/facebook/zstd)
+- [ModRelay](https://github.com/MultiplayerMods/ModRelay), for the online mods
 - [Switchbrew](https://switchbrew.org) and the Switch homebrew community
 
 ## License

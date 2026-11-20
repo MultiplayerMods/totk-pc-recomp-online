@@ -47,11 +47,11 @@ typedef struct {
     uint64_t *plt_slot, *plt_stub, nplt;   // PLT stubs sorted by GOT slot (ldr_plt_stub), built on first use
     // statistics
     uint64_t kinds[K_COUNT], sym_import, sym_own;
-    uint32_t imports, import_to[MOD_COUNT], weak_unresolved, strong_unresolved;
+    uint32_t imports, import_to[RT_MODULE_MAX], weak_unresolved, strong_unresolved;
     uint32_t init_off;
 } Mod;
 
-static Mod mods[MOD_COUNT];
+static Mod mods[RT_MODULE_MAX];
 static int nmods;
 static uint64_t identity_refs, stubs;
 static int *ovr_used, *obs_used;   // per linked table entry, plus probe overrides counted separately
@@ -444,7 +444,7 @@ static void seal(Mod *m) {
 void ldr_load(const char *exefs_dir) {
     if (nmods) rt_fatal("ldr_load called twice");
     if (!mem_layout()->pool) rt_fatal("ldr_load before mem_init");
-    if (rt_layout_count > MOD_COUNT) rt_fatal("loader: %d modules in the layout", rt_layout_count);
+    if (rt_layout_count > RT_MODULE_MAX) rt_fatal("loader: %d modules in the layout", rt_layout_count);
     for (int i = 0; i < rt_layout_count; i++) load_module(&mods[i], exefs_dir, &rt_layout[i]);
     nmods = rt_layout_count;
     ovr_used = calloc(hostfn_table_size(0) + 1, sizeof(int));
@@ -557,7 +557,7 @@ uint64_t ldr_plt_stub(const char *module, const char *name) {
 typedef struct {
     const char *name;
     uint64_t kinds[K_COUNT], total, sym_import, sym_own;
-    uint32_t imports, to[MOD_COUNT], weak, init_off, init_array;
+    uint32_t imports, to[RT_MODULE_MAX], weak, init_off, init_array;
 } Expect;
 static const Expect expect_121[] = {
     {"main", {508816, 1415, 32, 641}, 510904, 2088, 0, 675, {0, 16, 647}, 12, 0x30, 10673},

@@ -28,7 +28,8 @@ runtime/ and bin/ (PATH holds the Windows system directory and those), then runs
 
 Both need one game version extracted and lifted first (tools/extract.py, recomp/gen.py): generated/v121 or, without
 it, generated/v143, and for --prove its build/extracted/<version> (they are read, nothing is written to them). The
-runtime library reads only what both versions' layout.h share (MOD_COUNT, MOD_MAIN_BASE), so either serves.
+runtime library reads only what every layout.h shares (MOD_MAIN_BASE; tables are sized by RT_MODULE_MAX), so either
+serves, with or without a ModRelay mod's subsdk9.
 
 A release also needs build/xlate built from the current sources (tools/build_xlate.py); the script stops first if not.
 

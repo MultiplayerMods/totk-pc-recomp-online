@@ -35,6 +35,8 @@ def layout(exefs):
         size = Nso(str(path)).size
         out.append((name, base, size))
         base = align_up(base + size)
+    if len(out) > 12:   # RT_MODULE_MAX in runtime/dispatch.h
+        raise ValueError(f'{len(out)} modules, the runtime holds 12')
     if base > ADDRESS_LIMIT:
         raise ValueError(f'modules end at {base:#x}, above 2^39')
     return out

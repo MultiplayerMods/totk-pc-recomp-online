@@ -21,6 +21,10 @@ typedef struct RtModule {
 // The module glue that tools/build_game.py writes for each build (build/<version>/modules.c), from layout.json and
 // layout.h: every module of the layout, and the modules linked into this executable.
 typedef struct RtLayoutEntry { const char *name; uint64_t base, size; } RtLayoutEntry;
+// Most modules a layout can hold: main, subsdk0..9, sdk (recomp/layout.py ORDER). The runtime library sizes its
+// tables with it, not with layout.h's MOD_COUNT: the release's library is built from the plain game's layout, and a
+// ModRelay mod adds a module (subsdk9) to the player's.
+#define RT_MODULE_MAX 12
 extern const RtLayoutEntry rt_layout[];
 extern const int rt_layout_count;
 int rt_linked_modules(RtModule *out, int max);
